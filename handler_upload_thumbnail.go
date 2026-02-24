@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -71,13 +73,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	// 2. Determine file extension and build paths
-	parts := strings.Split(mediaType, "/")
-	if len(parts) != 2 {
-		respondWithError(w, http.StatusBadRequest, "Invalid content type", nil)
+	fileName, err := cfg.getAssetPath(mediaType)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't generate filename", err)
 		return
 	}
-	extension := parts[1]
-	fileName := fmt.Sprintf("%s.%s", videoID, extension)
 	filePath := filepath.Join(cfg.assetsRoot, fileName)
 
 	// 3. Create the file on the filesystem
@@ -105,4 +105,26 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	respondWithJSON(w, http.StatusOK, video)
+}
+
+func (cfg *apiConfig) getAssetPath(mediaType string) (string, error) {
+	// 1. Generate 32 random bytes
+	randomBytes := make([]byte, 32)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		return "", err
+	}
+
+	//2. Encode base64
+	fileName := base64.RawURLEncoding.EncodeToString(randomBytes)
+
+	//3. Get extension from media type
+	parts := strings.Split(mediaType, "/")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid media type")
+	}
+	ext := parts[1]
+
+	//4. return the full filename (e.g. "random-string.png")
+	return fmt.Sprintf("%s.%s", fileName, ext), nil
 }
