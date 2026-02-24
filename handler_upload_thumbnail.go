@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -49,14 +50,21 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer file.Close()
 
 	// 1. Get media type and validate video ownership first
-	mediaType := header.Header.Get("Content-Type")
-
+	contentType := header.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid Content-Type", err)
+		return
+	}
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "Invalid file type: only JPEG and PNG are allowed", nil)
+		return
+	}
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusNotFound, "Video not found", err)
 		return
 	}
-
 	if video.UserID != userID {
 		respondWithError(w, http.StatusUnauthorized, "Not authorized to update the video", nil)
 		return
