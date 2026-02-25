@@ -80,11 +80,17 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	// 6. IMPORTANT: Reset file pointer to beginning
 	tempFile.Seek(0, io.SeekStart)
 
-	// 7. Upload to S3
-	// Use your random string generator logic here for the key
+	// Detect aspect ration
+	ratio, err := getVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error analyzing video", err)
+		return
+	}
+
+	// Update the S3 key to include the ration prefix and Upload to S3
 	randomBytes := make([]byte, 32)
 	rand.Read(randomBytes)
-	key := base64.RawURLEncoding.EncodeToString(randomBytes) + ".mp4"
+	key := fmt.Sprintf("%s/%s.mp4", ratio, base64.RawURLEncoding.EncodeToString(randomBytes))
 
 	_, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
@@ -98,7 +104,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	}
 
 	// 8. Update DB with S3 URL
-	s3URL := fmt.Sprintf("http://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, key)
+	s3URL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, key)
 	video.VideoURL = &s3URL
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
